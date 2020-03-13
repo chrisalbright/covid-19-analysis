@@ -1,0 +1,1 @@
+docker run --rm -it -p 4040:4040 -v $(pwd)/COVID-19:/data -v $(pwd)/spark:/spark gettyimages/spark bin/spark-shell

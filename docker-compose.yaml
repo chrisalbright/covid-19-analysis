@@ -1,0 +1,42 @@
+version: '3'
+services:
+  odfe-node:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.6.1
+    container_name: elastic-node
+    environment:
+      # - node.name=elastic-node
+      - discovery.type=single-node
+      # - bootstrap.memory_lock=true # along with the memlock settings below, disables swapping
+      # - "ES_JAVA_OPTS=-Xms4096m -Xmx4096m" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536 # maximum number of open files for the Elasticsearch user, set to at least 65536 on modern systems
+        hard: 65536
+    volumes:
+      - elastic-data:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9600:9600 # required for Performance Analyzer
+    networks:
+      - elastic-net
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.6.1
+    container_name: elastic-kibana
+    ports:
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      ELASTICSEARCH_URL: https://elastic-node:9200
+      ELASTICSEARCH_HOSTS: https://elastic-node:9200
+    networks:
+      - elastic-net
+
+volumes:
+  elastic-data:
+
+networks:
+  elastic-net:
