@@ -5,7 +5,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 
-case class CountyAndState(state: String, county: String)
+case class StateAndCountry(state: String, county: String)
 case class CovidDaily(county: String, state: String, country: String, lastUpdate: Timestamp, confirmed: Int, deaths: Int, recovered: Int, latitude: Double, longitude: Double)
 
 object COVID extends Serializable {
@@ -84,12 +84,12 @@ object COVID extends Serializable {
 
   private val covidSrc: DataFrame = spark.read.schema(customSchema).option("header", true).csv("/data/csse_covid_19_data/csse_covid_19_daily_reports/*.csv")
 
-  def convertState(state: Option[String]): CountyAndState = state match {
-    case None => CountyAndState("None Available", "None Available")
+  def convertState(state: Option[String]): StateAndCountry = state match {
+    case None => StateAndCountry("None Available", "None Available")
     case Some(str: String) if str.contains(",") =>
       val split: Array[String] = str.split(", ")
-      CountyAndState(split(1), split(0))
-    case Some(str: String) => CountyAndState(str, "None Available")
+      StateAndCountry(stateCodes(split(1)), split(0))
+    case Some(str: String) => StateAndCountry(str, "None Available")
   }
   def convertTimestampFmt(timestampString: String, format: DateTimeFormatter): Timestamp = {
     val dt: LocalDateTime = LocalDateTime.parse(timestampString, format)
@@ -102,7 +102,7 @@ object COVID extends Serializable {
   }
   def convertRow(row: Row): CovidDaily = {
     val Row(state, country, lastUpdate, confirmed, deaths, recovered, latitude, longitude) = row
-    val cs: CountyAndState = convertState(Option(state.asInstanceOf[String]))
+    val cs: StateAndCountry = convertState(Option(state.asInstanceOf[String]))
     val lastUpdateTimestamp: Timestamp = convertTimestamp(lastUpdate.asInstanceOf[String])
     val safeCountry: String = Option(country.asInstanceOf[String]).getOrElse("None Available")
     def convertInt(x: Any): Int = Option(x).map(_.toString.toInt).getOrElse(-1)
