@@ -5,7 +5,7 @@ import java.time.{LocalDateTime, ZoneOffset}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 
-case class StateAndCountry(state: String, county: String)
+case class Country(country: String, state: String, county: String)
 case class CovidDaily(county: String, state: String, country: String, lastUpdate: Timestamp, confirmed: Int, deaths: Int, recovered: Int, latitude: Double, longitude: Double)
 
 object COVID extends Serializable {
@@ -22,6 +22,21 @@ object COVID extends Serializable {
     StructField("Longitude", DoubleType, true)
   ))
 
+  val countryMapping = Map(
+    "Iran (Islamic Republic of)" -> "Iran",
+    "occupied Palestinian territory" -> "Palestine",
+    "Viet Nam" -> "Vietnam",
+    "Taiwan*" -> "Taiwan",
+    "Taipei and environs" -> "Taiwan",
+    "Russian Federation" -> "Russia",
+    "Republic of Moldova" -> "Moldova",
+    "Republic of Ireland" -> "Ireland",
+    "UK" -> "United Kingdom",
+    "US" -> "United States",
+    "Macao SAR" -> "Macau",
+    "Hong Kong SAR" -> "Hong Kong",
+    "Czechia" -> "Czech Republic"
+  )
   val stateAbbrevString: String =
     """Alabama - AL
       |Alaska - AK
@@ -73,7 +88,7 @@ object COVID extends Serializable {
       |West Virginia - WV
       |Wisconsin - WI
       |Wyoming - WY""".stripMargin
-  val stateCodes: Map[String, String] = stateAbbrevString.split('\n').map(s => s.split('-').map(_.trim)).map(arr => arr(1) -> arr(0)).toMap.withDefaultValue("Unknown")
+  val stateMapping: Map[String, String] = stateAbbrevString.split('\n').map(s => s.split('-').map(_.trim)).map(arr => arr(1) -> arr(0)).toMap
   @transient lazy val oldYYfmt = DateTimeFormatter.ofPattern("M/d/yy H:m")
   @transient lazy val oldYYYYfmt = DateTimeFormatter.ofPattern("M/d/yyyy H:m")
   @transient lazy val newfmt = DateTimeFormatter.ISO_DATE_TIME
@@ -82,14 +97,23 @@ object COVID extends Serializable {
 
   import spark.implicits._
 
-  private val covidSrc: DataFrame = spark.read.schema(customSchema).option("header", true).csv("/data/csse_covid_19_data/csse_covid_19_daily_reports/*.csv")
+  val covidSrc: DataFrame = spark.read.schema(customSchema).option("header", true).csv("/data/csse_covid_19_data/csse_covid_19_daily_reports/*.csv")
 
-  def convertState(state: Option[String]): StateAndCountry = state match {
-    case None => StateAndCountry("None Available", "None Available")
-    case Some(str: String) if str.contains(",") =>
-      val split: Array[String] = str.split(", ")
-      StateAndCountry(stateCodes(split(1)), split(0))
-    case Some(str: String) => StateAndCountry(str, "None Available")
+  private val NA = "None Available"
+  def lookupCountry(name: String) =  countryMapping.getOrElse(name, name)
+  def lookupState(name: String): String = stateMapping.getOrElse(name, name)
+  def convertStateAndCountry(state: Option[String], country: Option[String]): Country = (state, country) match {
+    case (None, None) => Country(NA, NA, NA)
+    case (Some(state: String), Some(country: String)) if state.contains(",") =>
+      val split: Array[String] = state.split(", ")
+      Country(lookupCountry(country), lookupState(split(1)), split(0))
+    case (Some(state: String), Some(country: String)) => Country(lookupCountry(country), lookupState(state), NA)
+    case (None, Some("UK")) => Country(lookupCountry("UK"), "UK", NA)
+    case (None, Some(country: String)) => Country(lookupCountry(country), NA, NA)
+  }
+  def convertUK(country: String): (String, String) = country match {
+    case "UK" => ("United Kingdom", "UK")
+    case other => (other, "")
   }
   def convertTimestampFmt(timestampString: String, format: DateTimeFormatter): Timestamp = {
     val dt: LocalDateTime = LocalDateTime.parse(timestampString, format)
@@ -102,13 +126,17 @@ object COVID extends Serializable {
   }
   def convertRow(row: Row): CovidDaily = {
     val Row(state, country, lastUpdate, confirmed, deaths, recovered, latitude, longitude) = row
-    val cs: StateAndCountry = convertState(Option(state.asInstanceOf[String]))
+    val cs: Country = convertStateAndCountry(Option(state.asInstanceOf[String]), Option(country.asInstanceOf[String]))
     val lastUpdateTimestamp: Timestamp = convertTimestamp(lastUpdate.asInstanceOf[String])
-    val safeCountry: String = Option(country.asInstanceOf[String]).getOrElse("None Available")
     def convertInt(x: Any): Int = Option(x).map(_.toString.toInt).getOrElse(-1)
     def convertDouble(x: Any): Double = Option(x).map(_.toString.toDouble).getOrElse(-1.0)
-    CovidDaily(cs.county, cs.state, safeCountry, lastUpdateTimestamp, convertInt(confirmed), convertInt(deaths), convertInt(recovered), convertDouble(longitude), convertDouble(latitude))
+    CovidDaily(cs.county, cs.state, cs.country, lastUpdateTimestamp, convertInt(confirmed), convertInt(deaths), convertInt(recovered), convertDouble(longitude), convertDouble(latitude))
   }
 
   val covid: Dataset[CovidDaily] = covidSrc.map(convertRow)
+  val covidPivot: DataFrame = covid.withColumn("lastUpdate", $"lastUpdate" cast "date")
+    .groupBy($"country") // $"county", $"state",
+    .pivot($"lastUpdate")
+    .max("confirmed")
+//  val covidDeltas
 }
