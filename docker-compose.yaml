@@ -30,8 +30,8 @@ services:
     expose:
       - "5601"
     environment:
-      ELASTICSEARCH_URL: https://elastic-node:9200
-      ELASTICSEARCH_HOSTS: https://elastic-node:9200
+      ELASTICSEARCH_URL: http://elastic-node:9200
+      ELASTICSEARCH_HOSTS: http://elastic-node:9200
     networks:
       - elastic-net
 
