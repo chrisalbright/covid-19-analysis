@@ -2,11 +2,17 @@ import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneOffset}
 
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
 
+import org.elasticsearch.spark.sql._
+
+import scala.language.postfixOps
+
 case class Country(country: String, state: String, county: String)
-case class CovidDaily(county: String, state: String, country: String, lastUpdate: Timestamp, confirmed: Int, deaths: Int, recovered: Int, latitude: Double, longitude: Double)
+case class CovidDaily(county: String, state: String, country: String, lastUpdate: Timestamp, confirmed: Int, deaths: Int, recovered: Int)
 
 object COVID extends Serializable {
   val stateName = "State"
@@ -31,6 +37,7 @@ object COVID extends Serializable {
     "Russian Federation" -> "Russia",
     "Republic of Moldova" -> "Moldova",
     "Republic of Ireland" -> "Ireland",
+    "Mainland China" -> "China",
     "UK" -> "United Kingdom",
     "US" -> "United States",
     "Macao SAR" -> "Macau",
@@ -100,13 +107,13 @@ object COVID extends Serializable {
   val covidSrc: DataFrame = spark.read.schema(customSchema).option("header", true).csv("/data/csse_covid_19_data/csse_covid_19_daily_reports/*.csv")
 
   private val NA = "None Available"
-  def lookupCountry(name: String) =  countryMapping.getOrElse(name, name)
+  def lookupCountry(name: String) = countryMapping.getOrElse(name, name)
   def lookupState(name: String): String = stateMapping.getOrElse(name, name)
   def convertStateAndCountry(state: Option[String], country: Option[String]): Country = (state, country) match {
     case (None, None) => Country(NA, NA, NA)
     case (Some(state: String), Some(country: String)) if state.contains(",") =>
       val split: Array[String] = state.split(", ")
-      Country(lookupCountry(country), lookupState(split(1)), split(0))
+      Country(lookupCountry(country), lookupState(split(1)), split(0).replace("County", "").trim)
     case (Some(state: String), Some(country: String)) => Country(lookupCountry(country), lookupState(state), NA)
     case (None, Some("UK")) => Country(lookupCountry("UK"), "UK", NA)
     case (None, Some(country: String)) => Country(lookupCountry(country), NA, NA)
@@ -130,13 +137,29 @@ object COVID extends Serializable {
     val lastUpdateTimestamp: Timestamp = convertTimestamp(lastUpdate.asInstanceOf[String])
     def convertInt(x: Any): Int = Option(x).map(_.toString.toInt).getOrElse(-1)
     def convertDouble(x: Any): Double = Option(x).map(_.toString.toDouble).getOrElse(-1.0)
-    CovidDaily(cs.county, cs.state, cs.country, lastUpdateTimestamp, convertInt(confirmed), convertInt(deaths), convertInt(recovered), convertDouble(longitude), convertDouble(latitude))
+    CovidDaily(cs.county, cs.state, cs.country, lastUpdateTimestamp, convertInt(confirmed), convertInt(deaths), convertInt(recovered)) //, convertDouble(longitude), convertDouble(latitude))
   }
 
-  val covid: Dataset[CovidDaily] = covidSrc.map(convertRow)
-  val covidPivot: DataFrame = covid.withColumn("lastUpdate", $"lastUpdate" cast "date")
-    .groupBy($"country") // $"county", $"state",
-    .pivot($"lastUpdate")
-    .max("confirmed")
-//  val covidDeltas
+  val covid: Dataset[CovidDaily] =
+    covidSrc.map(convertRow)
+      .distinct()
+  //  val covidPivot: DataFrame = covid.withColumn("lastUpdate", $"lastUpdate" cast "date")
+  //    .groupBy($"country") // $"county", $"state",
+  //    .pivot($"lastUpdate")
+  //    .max("confirmed")
+  @transient lazy val covidDeltaWindow = Window
+    .partitionBy($"county", $"state", $"country")
+    .orderBy($"lastUpdate")
+  val covidDeltas = covid.withColumn("lastUpdate", date_trunc("Day", $"lastUpdate"))
+    .withColumn("prev_confirmed", lag($"confirmed", 1, 0).over(covidDeltaWindow))
+    .withColumn("prev_deaths", lag($"deaths", 1, 0).over(covidDeltaWindow))
+    .withColumn("prev_recovered", lag($"recovered", 1, 0).over(covidDeltaWindow))
+    .withColumn("newConfirmed", $"confirmed" - $"prev_confirmed")
+    .withColumn("newDeaths", $"deaths" - $"prev_deaths")
+    .withColumn("newRecovered", $"recovered" - $"prev_recovered")
+    .drop("prev_confirmed", "prev_deaths", "prev_recovered")
+
+  def saveToEs(df: DataFrame): Unit = {
+    df.saveToEs("covid/deltas", Map("es.nodes" -> "elastic-node", "es.mapping.rich.date" -> "true"))
+  }
 }
