@@ -7,7 +7,7 @@ services:
       # - node.name=elastic-node
       - discovery.type=single-node
       # - bootstrap.memory_lock=true # along with the memlock settings below, disables swapping
-      # - "ES_JAVA_OPTS=-Xms4096m -Xmx4096m" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
+      - "ES_JAVA_OPTS=-Xms4096m -Xmx4096m" # minimum and maximum Java heap size, recommend setting both to 50% of system RAM
     ulimits:
       memlock:
         soft: -1
