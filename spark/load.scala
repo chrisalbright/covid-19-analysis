@@ -1,20 +1,96 @@
-import java.sql.Timestamp
+import java.sql.{Date, Timestamp}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneOffset}
 
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
-
-import org.elasticsearch.spark.sql._
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 
 import scala.language.postfixOps
 
 case class Country(country: String, state: String, county: String)
-case class CovidDaily(county: String, state: String, country: String, lastUpdate: Timestamp, confirmed: Int, deaths: Int, recovered: Int)
+case class CovidDaily(recordDate: Date, state: String, country: String, confirmed: BigInt, deaths: BigInt, recovered: BigInt)
+case class CovidEs(id: Int, recordDate: java.util.Date, state: String, country: String, totalConfirmed: Int, newConfirmed: Int, totalDeaths: Int, newDeaths: Int, totalRecovered: Int, newRecovered: Int)
+object DataCleanse extends Serializable {
+  val countryMapping = Map(
+    "Iran (Islamic Republic of)" -> "Iran",
+    "occupied Palestinian territory" -> "Palestine",
+    "Viet Nam" -> "Vietnam",
+    "Korea, South" -> "South Korea",
+    "Republic of Korea" -> "South Korea",
+    "Taiwan*" -> "Taiwan",
+    "Taipei and environs" -> "Taiwan",
+    "Russian Federation" -> "Russia",
+    "Republic of Moldova" -> "Moldova",
+    "Republic of Ireland" -> "Ireland",
+    "Mainland China" -> "China",
+    "UK" -> "United Kingdom",
+    "US" -> "United States",
+    "Macao SAR" -> "Macau",
+    "Hong Kong SAR" -> "Hong Kong",
+    "Czechia" -> "Czech Republic"
+  )
+  val stateMapping: Map[String, String] = Map(
+      "AL" -> "Alabama",
+      "AK" -> "Alaska",
+      "AZ" -> "Arizona",
+      "AR" -> "Arkansas",
+      "CA" -> "California",
+      "CO" -> "Colorado",
+      "CT" -> "Connecticut",
+      "DE" -> "Delaware",
+      "FL" -> "Florida",
+      "GA" -> "Georgia",
+      "HI" -> "Hawaii",
+      "ID" -> "Idaho",
+      "IL" -> "Illinois",
+      "IN" -> "Indiana",
+      "IA" -> "Iowa",
+      "KS" -> "Kansas",
+      "KY" -> "Kentucky",
+      "LA" -> "Louisiana",
+      "ME" -> "Maine",
+      "MD" -> "Maryland",
+      "MA" -> "Massachusetts",
+      "MI" -> "Michigan",
+      "MN" -> "Minnesota",
+      "MS" -> "Mississippi",
+      "MO" -> "Missouri",
+      "MT" -> "Montana",
+      "NE" -> "Nebraska",
+      "NV" -> "Nevada",
+      "NH" -> "New Hampshire",
+      "NJ" -> "New Jersey",
+      "NM" -> "New Mexico",
+      "NY" -> "New York",
+      "NC" -> "North Carolina",
+      "ND" -> "North Dakota",
+      "OH" -> "Ohio",
+      "OK" -> "Oklahoma",
+      "OR" -> "Oregon",
+      "PA" -> "Pennsylvania",
+      "RI" -> "Rhode Island",
+      "SC" -> "South Carolina",
+      "SD" -> "South Dakota",
+      "TN" -> "Tennessee",
+      "TX" -> "Texas",
+      "UT" -> "Utah",
+      "VT" -> "Vermont",
+      "VA" -> "Virginia",
+      "WA" -> "Washington",
+      "WV" -> "West Virginia",
+      "WI" -> "Wisconsin",
+      "WY" -> "Wyoming",
+      "Unassigned Location (From Diamond Princess)" -> "Diamond Princess"),
+      "From Diamond Princess" -> "Diamond Princess")
+
+}
 
 object COVID extends Serializable {
+
+  import DataCleanse._
+
   val stateName = "State"
   val countryName = "Country"
   val customSchema = StructType(Array(
@@ -28,74 +104,6 @@ object COVID extends Serializable {
     StructField("Longitude", DoubleType, true)
   ))
 
-  val countryMapping = Map(
-    "Iran (Islamic Republic of)" -> "Iran",
-    "occupied Palestinian territory" -> "Palestine",
-    "Viet Nam" -> "Vietnam",
-    "Taiwan*" -> "Taiwan",
-    "Taipei and environs" -> "Taiwan",
-    "Russian Federation" -> "Russia",
-    "Republic of Moldova" -> "Moldova",
-    "Republic of Ireland" -> "Ireland",
-    "Mainland China" -> "China",
-    "UK" -> "United Kingdom",
-    "US" -> "United States",
-    "Macao SAR" -> "Macau",
-    "Hong Kong SAR" -> "Hong Kong",
-    "Czechia" -> "Czech Republic"
-  )
-  val stateAbbrevString: String =
-    """Alabama - AL
-      |Alaska - AK
-      |Arizona - AZ
-      |Arkansas - AR
-      |California - CA
-      |Colorado - CO
-      |Connecticut - CT
-      |Delaware - DE
-      |Florida - FL
-      |Georgia - GA
-      |Hawaii - HI
-      |Idaho - ID
-      |Illinois - IL
-      |Indiana - IN
-      |Iowa - IA
-      |Kansas - KS
-      |Kentucky - KY
-      |Louisiana - LA
-      |Maine - ME
-      |Maryland - MD
-      |Massachusetts - MA
-      |Michigan - MI
-      |Minnesota - MN
-      |Mississippi - MS
-      |Missouri - MO
-      |Montana - MT
-      |Nebraska - NE
-      |Nevada - NV
-      |New Hampshire - NH
-      |New Jersey - NJ
-      |New Mexico - NM
-      |New York - NY
-      |North Carolina - NC
-      |North Dakota - ND
-      |Ohio - OH
-      |Oklahoma - OK
-      |Oregon - OR
-      |Pennsylvania - PA
-      |Rhode Island - RI
-      |South Carolina - SC
-      |South Dakota - SD
-      |Tennessee - TN
-      |Texas - TX
-      |Utah - UT
-      |Vermont - VT
-      |Virginia - VA
-      |Washington - WA
-      |West Virginia - WV
-      |Wisconsin - WI
-      |Wyoming - WY""".stripMargin
-  val stateMapping: Map[String, String] = stateAbbrevString.split('\n').map(s => s.split('-').map(_.trim)).map(arr => arr(1) -> arr(0)).toMap
   @transient lazy val oldYYfmt = DateTimeFormatter.ofPattern("M/d/yy H:m")
   @transient lazy val oldYYYYfmt = DateTimeFormatter.ofPattern("M/d/yyyy H:m")
   @transient lazy val newfmt = DateTimeFormatter.ISO_DATE_TIME
@@ -104,7 +112,11 @@ object COVID extends Serializable {
 
   import spark.implicits._
 
-  val covidSrc: DataFrame = spark.read.schema(customSchema).option("header", true).csv("/data/csse_covid_19_data/csse_covid_19_daily_reports/*.csv")
+  val covidSrc: DataFrame =
+    spark.read.schema(customSchema)
+      .option("header", true)
+      .csv("/data/csse_covid_19_data/csse_covid_19_daily_reports/*.csv")
+      .withColumn("recordDate", to_date(regexp_extract(input_file_name(), """.+\/(\d\d-\d\d-\d\d\d\d).csv""", 1), "MM-dd-yyyy"))
 
   private val NA = "None Available"
   def lookupCountry(name: String) = countryMapping.getOrElse(name, name)
@@ -116,7 +128,7 @@ object COVID extends Serializable {
       Country(lookupCountry(country), lookupState(split(1)), split(0).replace("County", "").trim)
     case (Some(state: String), Some(country: String)) => Country(lookupCountry(country), lookupState(state), NA)
     case (None, Some("UK")) => Country(lookupCountry("UK"), "UK", NA)
-    case (None, Some(country: String)) => Country(lookupCountry(country), NA, NA)
+    case (None, Some(country: String)) => Country(lookupCountry(country), lookupCountry(country), NA)
   }
   def convertUK(country: String): (String, String) = country match {
     case "UK" => ("United Kingdom", "UK")
@@ -131,26 +143,53 @@ object COVID extends Serializable {
     case str: String if str.matches("""\d?\d/\d?\d/\d\d\d\d \d?\d:\d?\d""") => convertTimestampFmt(str, oldYYYYfmt)
     case str: String => convertTimestampFmt(str, newfmt)
   }
+
   def convertRow(row: Row): CovidDaily = {
-    val Row(state, country, lastUpdate, confirmed, deaths, recovered, latitude, longitude) = row
+    val Row(state, country, lastUpdate, confirmed, deaths, recovered, latitude, longitude, recordDate: Date) = row
     val cs: Country = convertStateAndCountry(Option(state.asInstanceOf[String]), Option(country.asInstanceOf[String]))
     val lastUpdateTimestamp: Timestamp = convertTimestamp(lastUpdate.asInstanceOf[String])
-    def convertInt(x: Any): Int = Option(x).map(_.toString.toInt).getOrElse(-1)
+    def convertInt(x: Any): Int = Option(x).map(_.toString.toInt).getOrElse(0)
     def convertDouble(x: Any): Double = Option(x).map(_.toString.toDouble).getOrElse(-1.0)
-    CovidDaily(cs.county, cs.state, cs.country, lastUpdateTimestamp, convertInt(confirmed), convertInt(deaths), convertInt(recovered)) //, convertDouble(longitude), convertDouble(latitude))
+    CovidDaily(recordDate, cs.state, cs.country, convertInt(confirmed), convertInt(deaths), convertInt(recovered)) //, convertDouble(longitude), convertDouble(latitude))
   }
 
-  val covid: Dataset[CovidDaily] =
+  private val covid0 =
     covidSrc.map(convertRow)
-      .distinct()
+      .groupBy($"state", $"country", $"recordDate")
+      .agg(
+        sum("confirmed") as "confirmed",
+        sum("deaths") as "deaths",
+        sum("recovered") as "recovered")
+      .cache()
+
+  val states = covid0.select($"state", $"country").distinct()
+  val dates = covid0.select($"recordDate").distinct()
+  val allDates = dates.crossJoin(states)
+
+  // TODO: need to default measure columns to last non-zero value
+  val covid = allDates
+    .join(
+      covid0,
+      Seq("state", "country", "recordDate"),
+      "left_outer")
+    .na.fill(Map("confirmed" -> 0, "deaths" -> 0, "recovered" -> 0))
+    .sort($"country", $"state", $"recordDate" desc)
+    .withColumn("confirmed", $"confirmed" cast IntegerType)
+    .withColumn("deaths", $"deaths" cast IntegerType)
+    .withColumn("recovered", $"recovered" cast IntegerType)
+    .withColumn("id", hash($"state", $"country", $"recordDate"))
+    .cache()
+
   //  val covidPivot: DataFrame = covid.withColumn("lastUpdate", $"lastUpdate" cast "date")
   //    .groupBy($"country") // $"county", $"state",
   //    .pivot($"lastUpdate")
   //    .max("confirmed")
-  @transient lazy val covidDeltaWindow = Window
-    .partitionBy($"county", $"state", $"country")
-    .orderBy($"lastUpdate")
-  val covidDeltas = covid.withColumn("lastUpdate", date_trunc("Day", $"lastUpdate"))
+
+  @transient
+  lazy val covidDeltaWindow = Window
+    .partitionBy($"state", $"country")
+    .orderBy($"recordDate")
+  val covidDeltas = covid
     .withColumn("prev_confirmed", lag($"confirmed", 1, 0).over(covidDeltaWindow))
     .withColumn("prev_deaths", lag($"deaths", 1, 0).over(covidDeltaWindow))
     .withColumn("prev_recovered", lag($"recovered", 1, 0).over(covidDeltaWindow))
@@ -159,7 +198,34 @@ object COVID extends Serializable {
     .withColumn("newRecovered", $"recovered" - $"prev_recovered")
     .drop("prev_confirmed", "prev_deaths", "prev_recovered")
 
-  def saveToEs(df: DataFrame): Unit = {
-    df.saveToEs("covid/deltas", Map("es.nodes" -> "elastic-node", "es.mapping.rich.date" -> "true"))
+  private def saveToEs(df: DataFrame): Unit = {
+    import org.elasticsearch.spark.rdd.EsSpark
+
+    val x = df.rdd.map {
+      case Row(state: String, country: String, recordDate: Date, confirmed: Int, deaths: Int, recovered: Int, id: Int, newConfirmed: Int, newDeaths: Int, newRecovered: Int) =>
+        CovidEs(
+          id = id,
+          recordDate = recordDate,
+          state = state,
+          country = country,
+          totalConfirmed = confirmed,
+          newConfirmed = newConfirmed,
+          totalRecovered = recovered,
+          newRecovered = newRecovered,
+          totalDeaths = deaths,
+          newDeaths = newDeaths
+        )
+    }
+
+    EsSpark
+      .saveToEs(x, "covid/deltas",
+        Map(
+          "es.nodes" -> "elastic-node",
+          "es.mapping.rich.date" -> "true",
+          "es.mapping.id" -> "id"
+        ))
   }
+
+  def publish(): Unit = saveToEs(covidDeltas)
+  
 }
