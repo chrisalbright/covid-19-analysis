@@ -82,8 +82,9 @@ object DataCleanse extends Serializable {
       "WV" -> "West Virginia",
       "WI" -> "Wisconsin",
       "WY" -> "Wyoming",
-      "Unassigned Location (From Diamond Princess)" -> "Diamond Princess"),
-      "From Diamond Princess" -> "Diamond Princess")
+      "Unassigned Location (From Diamond Princess)" -> "Diamond Princess",
+      "From Diamond Princess" -> "Diamond Princess"
+    )
 
 }
 
