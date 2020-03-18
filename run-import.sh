@@ -1,4 +1,4 @@
-./get-latest.sh && \
+./get-latest.sh
 ./mvnw clean package && \
 docker run --rm -it \
 -p 4040:4040 \
