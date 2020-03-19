@@ -12,8 +12,9 @@ This will start ElasticSearch & Kibana
 This will import all the visualizations and dashboards
 1. `./run-import.sh`
 This will process the data and save it into an ElasticSearch index
-1. `open http://localhost:5601/`
+1. `open http://localhost:5601/app/kibana#/dashboards`
 This is the URL for the your Kibana instance
+1. Open the `COVID-19` dashboard
 
 This project is very new. Please lmk if you use it, have trouble with it, have success with it, or improve it.
 
