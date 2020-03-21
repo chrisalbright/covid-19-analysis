@@ -9,4 +9,4 @@ gettyimages/spark \
 bin/spark-submit \
 --class com.chrisalbright.covid.CovidAnalysisJob \
 --packages org.elasticsearch:elasticsearch-hadoop:7.6.1 \
-/spark/covid-19-analysis-0.1-SNAPSHOT.jar
+/spark/covid-19-analysis-0.1-SNAPSHOT.jar $@

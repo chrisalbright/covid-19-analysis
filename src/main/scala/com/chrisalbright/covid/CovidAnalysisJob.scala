@@ -8,7 +8,12 @@ object CovidAnalysisJob {
     val spark = SparkSession.builder().getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
     val covidAnalysis = new CovidAnalysis(spark)
-    covidAnalysis.publishDeltas()
+    args.lift(0) match {
+      case Some("es") => covidAnalysis.publishDeltas()
+      case Some("csv") => covidAnalysis.saveDeltasCSV()
+      case Some(_)|None => ""
+    }
+    spark.stop()
+    sys.exit()
   }
-
 }

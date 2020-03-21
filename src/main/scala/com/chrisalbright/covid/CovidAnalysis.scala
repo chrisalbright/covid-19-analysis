@@ -75,8 +75,7 @@ class CovidAnalysis(spark: SparkSession, options: Map[String, String] = Map(
 
   def publish(rdd: RDD[CovidEs]): Unit = EsSpark.saveToEs(rdd, "covid/deltas", options)
 
-  def publishDeltas(): Unit = {
-    publish(covidDeltas.rdd.map {
+  private def prepareDeltas(covidDeltas: DataFrame): RDD[CovidEs] = covidDeltas.rdd.map {
       case Row(state: String, country: String, recordDate: Date, confirmed: Int, deaths: Int, recovered: Int, id: Int, newConfirmed: Int, newDeaths: Int, newRecovered: Int) =>
         CovidEs(
           id = id,
@@ -90,9 +89,22 @@ class CovidAnalysis(spark: SparkSession, options: Map[String, String] = Map(
           totalDeaths = deaths,
           newDeaths = newDeaths
         )
-    })
+    }
+  
+  def publishDeltas(): Unit = {
+    publish(prepareDeltas(covidDeltas))
   }
 
+  def saveDeltasCSV(): Unit = {
+    covidDeltas
+      .coalesce(1)
+      .withColumnRenamed("recovered", "totalRecovered")
+      .withColumnRenamed("deaths", "totalDeaths")
+      .withColumnRenamed("confirmed", "totalConfirmed")
+      .write.mode("overwrite")
+      .option("header", true)
+      .csv("/data/covid.csv")
+  }
 }
 
 object CovidAnalysis {
