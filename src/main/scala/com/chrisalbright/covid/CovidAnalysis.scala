@@ -103,7 +103,7 @@ class CovidAnalysis(spark: SparkSession, options: Map[String, String] = Map(
       .withColumnRenamed("confirmed", "totalConfirmed")
       .write.mode("overwrite")
       .option("header", true)
-      .csv("/data/covid.csv")
+      .csv("/output/covid.csv")
   }
 }
 

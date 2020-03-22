@@ -1,9 +1,9 @@
-./get-latest.sh
 ./mvnw clean package && \
 docker run --rm -it \
 -p 4040:4040 \
 --network covid-19-analysis_elastic-net \
 -v $(pwd)/COVID-19:/data \
+-v $(pwd)/output:/output \
 -v $(pwd)/target:/spark \
 gettyimages/spark \
 bin/spark-submit \
