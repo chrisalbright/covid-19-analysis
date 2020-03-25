@@ -1,7 +1,7 @@
 package com.chrisalbright.covid
 
 import java.sql.Timestamp
-import java.time.{LocalDateTime, ZoneOffset}
+import java.time.{LocalDateTime, ZoneOffset, Instant}
 import java.time.format.DateTimeFormatter
 
 object DataCleanse extends Serializable {
@@ -104,6 +104,7 @@ object DataCleanse extends Serializable {
     case str: String if str.matches("""\d?\d/\d?\d/\d\d \d?\d:\d?\d""") => convertTimestampFmt(str, oldYYfmt)
     case str: String if str.matches("""\d?\d/\d?\d/\d\d\d\d \d?\d:\d?\d""") => convertTimestampFmt(str, oldYYYYfmt)
     case str: String => convertTimestampFmt(str, newfmt)
+    case null => Timestamp.from(Instant.now())
   }
 
 }
