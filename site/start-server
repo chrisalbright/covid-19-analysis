@@ -1,0 +1,4 @@
+docker run --name nginx-covid --rm -it \
+-p 80:80 \
+-v $(pwd)/content:/usr/share/nginx/html \
+nginx

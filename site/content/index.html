@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hello Bulma!</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
+  <script src="https://unpkg.com/d3@5.15.0/dist/d3.js"></script>
+  <script src="https://unpkg.com/crossfilter2@1.5.2/crossfilter.min.js"></script>
+  <script src="https://unpkg.com/dc@4.0.3/dist/dc.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/dc@4.0.3/dist/style/dc.css">
+  <script src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+  <script src="https://unpkg.com/ramda@0.27.0/dist/ramda.min.js"></script>
+  <script defer type="text/javascript">
+    const dateFormatSpecifier = '%Y-%m-%d';
+    const dateFormat = d3.timeFormat(dateFormatSpecifier);
+    const dateFormatParse = d3.timeParse(dateFormatSpecifier);
+    const numberFormat = d3.format('.2f');
+    const pctFormat = d3.format('.5f');
+    const transformRecord = rec => ({
+      date: dateFormatParse(rec.date),
+      month: d3.timeMonth(dateFormatParse(rec.date)),
+      week: d3.timeWeek(dateFormatParse(rec.date)),
+      countryOrRegion: rec.country_or_region,
+      provinceOrState: rec.province_or_state,
+      latitude: parseFloat(rec.latitude) || 0,
+      longitude: parseFloat(rec.longitude) || 0,
+      newCases: +rec.daily_new_cases,
+      totalCases: +rec.running_total_cases,
+      newDeaths: +rec.daily_new_deaths,
+      totalDeaths: +rec.running_total_deaths,
+      population: +rec.country_population_2018,
+    });
+
+    d3.csv("data.csv").then(rawData => {
+      const data = R.map(transformRecord, rawData);
+      const ndx = crossfilter(data);
+      const dateDimension = ndx.dimension(rec => rec.date);
+      const contryDimension = ndx.dimension(rec => rec.countryOrRegion);
+      const stateDimension = ndx.dimension(rec => rec.provinceOrState);
+      const table = dc.dataTable('#table');
+      table
+        .dimension(dateDimension)
+        .columns([
+          { label: "Date", format: rec => dateFormat(rec.date) },
+          'countryOrRegion',
+          'provinceOrState',
+          'newCases',
+          'totalCases',
+          'newDeaths',
+          'totalDeaths',
+          'population',
+          {label: "Percent Of Population", format: rec => pctFormat(100 * (rec.totalCases/rec.population)) + "%"},
+        ])
+        .sortBy ( rec => rec.totalCases ).order(d3.descending)
+        .on('renderlet', table => {
+          table.selectAll('.dc-table-group').classed('info', true);
+        });
+      dc.renderAll();
+    });
+  </script>
+</head>
+
+<body>
+  <section class="hero is-dark">
+    <div class="hero-body">
+      <div class="container">
+        <h1 class="title is-1">COVID-19</h1>
+        <h2 class="subtitle">Tracking the spread</h2>
+      </div>
+    </div>
+  </section>
+  <div class="columns">
+    <div class="column">
+      <div class="card">
+        <div class="card-content">
+          <h2 class="title">"Quote"</h2>
+          <h3 class="subtitle">"Author"</h3>
+        </div>
+        <footer class="card-footer">
+          <div class="card-footer-item">
+            <a href="#" class="button is-success"><i class="fa fa-thumbs-up"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-danger"><i class="fa fa-thumbs-down"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-info"><i class="fa fa-retweet"></i></a>
+          </div>
+        </footer>
+      </div>
+    </div>
+    <div class="column">
+      <div class="card">
+        <div class="card-content">
+          <h2 class="title">"Quote"</h2>
+          <h3 class="subtitle">"Author"</h3>
+        </div>
+        <footer class="card-footer">
+          <div class="card-footer-item">
+            <a href="#" class="button is-success"><i class="fa fa-thumbs-up"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-danger"><i class="fa fa-thumbs-down"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-info"><i class="fa fa-retweet"></i></a>
+          </div>
+        </footer>
+      </div>
+    </div>
+    <div class="column">
+      <div class="card">
+        <div class="card-content">
+          <h2 class="title">"Quote"</h2>
+          <h3 class="subtitle">"Author"</h3>
+        </div>
+        <footer class="card-footer">
+          <div class="card-footer-item">
+            <a href="#" class="button is-success"><i class="fa fa-thumbs-up"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-danger"><i class="fa fa-thumbs-down"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-info"><i class="fa fa-retweet"></i></a>
+          </div>
+        </footer>
+      </div>
+    </div>
+    <div class="column">
+      <div class="card">
+        <div class="card-content">
+          <h2 class="title">"Quote"</h2>
+          <h3 class="subtitle">"Author"</h3>
+        </div>
+        <footer class="card-footer">
+          <div class="card-footer-item">
+            <a href="#" class="button is-success"><i class="fa fa-thumbs-up"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-danger"><i class="fa fa-thumbs-down"></i></a>
+          </div>
+          <div class="card-footer-item">
+            <a href="#" class="button is-info"><i class="fa fa-retweet"></i></a>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+  </div>
+  <section>
+    <div class="box">
+      <table id="table" class="table table-hover dc-data-table"></table>
+    </div>
+  </section>
+
+</body>
+
+</html>
